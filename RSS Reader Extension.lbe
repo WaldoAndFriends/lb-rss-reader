@@ -1,0 +1,155 @@
+[extension_name]
+RSS Reader
+[insert_external]
+<svg style="float: right; max-height: 150px; max-width: 150px;" xmlns="http://www.w3.org/2000/svg" version="1.1"
+	width="128px" height="128px" id="RSSicon" viewBox="0 0 256 256">
+	<defs>
+		<linearGradient x1="0.085" y1="0.085" x2="0.915" y2="0.915" id="RSSg">
+			<stop offset="0.0"    stop-color="#E3702D" />
+			<stop offset="0.1071" stop-color="#EA7D31" />
+			<stop offset="0.3503" stop-color="#F69537" />
+			<stop offset="0.5"    stop-color="#FB9E3A" />
+			<stop offset="0.7016" stop-color="#EA7C31" />
+			<stop offset="0.8866" stop-color="#DE642B" />
+			<stop offset="1.0"    stop-color="#D95B29" />
+		</linearGradient>
+	</defs>
+	<rect width="256" height="256" rx="55" ry="55" x="0" y="0" fill="#CC5D15" />
+	<rect width="246" height="246" rx="50" ry="50" x="5" y="5" fill="#F49C52" />
+	<rect width="236" height="236" rx="47" ry="47" x="10" y="10" fill="url(#RSSg)" />
+	<circle cx="68" cy="189" r="24" fill="#FFF" />
+	<path d="M160 213h-34a82 82 0 0 0 -82 -82v-34a116 116 0 0 1 116 116z" fill="#FFF" />
+	<path d="M184 213A140 140 0 0 0 44 73 V 38a175 175 0 0 1 175 175z" fill="#FFF" />
+</svg>
+
+<p><strong>Product:</strong> RSS Reader Extension</p>
+<p><strong>Author:</strong> <a href="https://twitch.tv/WaldoAndFriends" target="_blank">WaldoAndFriends</a></p>
+<p><strong>Version:</strong> v1.0</p>
+<fieldset>
+	<legend id="legendRSSReader">RSS Reader Extension</legend>
+	<ul id="rssList">
+		<li>No feed loaded yet...</li>
+	</ul>
+</fieldset>
+<p><strong>Usage:</strong></p>
+<ul>
+	<li>Fetch a RSS feed using the <em>Send to extension command</em>:</li>
+	<ul>
+		<li>Pick the prefix for the stack variables.</li>
+		<li>In most cases CORS needs to be set to Yes.</li>
+	</ul>
+	<li>You can access the RSS data with the 3 stacks that will be created, the latest article is at index 0.</li>
+	<ul>
+		<li id="titleLabel">YourName:titles</li>
+		<li id="descLabel">YourName:descriptions</li>
+		<li id="linkLabel">YourName:links</li>
+	</ul>
+</ul>
+[insert_command]
+lioranboardclient.send('{"type":"MESSAGE","topic":"ExtensionCommand","name":"Fetch RSS Feed","boxcount":3,"boxname1":"Url","boxtype1":"string","boxname2":"Stack Name","boxtype2":"string","boxname3":"CORS|Yes|No|","boxtype3":"string"}');
+[insert_hook]
+case "FetchRSSFeed": {
+	LBFetchRSS(LioranBoardJSON.Url, LioranBoardJSON.StackName, LioranBoardJSON.CORS);
+} break;
+[insert_script]
+async function LBFetchRSS(url, stackName, cors) {
+	let DOMPARSER = new DOMParser().parseFromString.bind(new DOMParser());
+
+	if (cors == 'Yes') {
+		url = 'https://cors.bridged.cc/' + url;
+	}
+
+	fetch(url).then((res) => {
+		res.text().then((xmlTxt) => {
+			let titles       = [];
+			let descriptions = [];
+			let links        = [];
+
+			try {
+				let doc = DOMPARSER(xmlTxt, "text/xml");
+				doc.querySelectorAll("item").forEach((item) => {
+					let i = item.querySelector.bind(item);
+
+					titles.push(!!i("title") ? i("title").textContent : "-");
+					descriptions.push(!!i("description") ? i("description").textContent : "-");
+					links.push(!!i("link") ? i("link").textContent : "#");
+				});
+			} catch (e) {
+				let errorMessage = {
+					type:    "MESSAGE",
+					topic:   "AlertMessage",
+					message: "Error in parsing the feed: " + e,
+				};
+
+				lioranboardclient.send(JSON.stringify(errorMessage));
+				console.error("Error in parsing the feed: " + e);
+			}
+
+			for (let i = 0; i < titles.length; i++) {
+				let replaceTitlesStack = {
+					type:     "MESSAGE",
+					topic:    "ReplaceStack",
+					name:     stackName + ":titles",
+					position: i.toString(),
+					value:    titles[i],
+				};
+
+				lioranboardclient.send(JSON.stringify(replaceTitlesStack));
+			}
+
+			for (let i = 0; i < descriptions.length; i++) {
+				let replaceDescriptionsStack = {
+					type:     "MESSAGE",
+					topic:    "ReplaceStack",
+					name:     stackName + ":descriptions",
+					position: i.toString(),
+					value:    descriptions[i],
+				};
+
+				lioranboardclient.send(JSON.stringify(replaceDescriptionsStack));
+			}
+
+			for (let i = 0; i < links.length; i++) {
+				let replaceLinksStack = {
+					type:     "MESSAGE",
+					topic:    "ReplaceStack",
+					name:     stackName + ":links",
+					position: i.toString(),
+					value:    links[i],
+				};
+
+				lioranboardclient.send(JSON.stringify(replaceLinksStack));
+			}
+
+			let rssListElement = document.getElementById("rssList");
+			rssListElement.innerHTML = "";
+			for (let i = 0; i < titles.length; i++) {
+				let rssItem = document.createElement("li");
+				let rssLink = document.createElement("a");
+
+				rssLink.text = titles[i];
+				rssLink.href = links[i];
+
+				rssItem.appendChild(rssLink);
+				rssListElement.appendChild(rssItem);
+			}
+
+			let titleLabel = document.getElementById("titleLabel");
+			titleLabel.innerHTML = `${stackName}:titles`;
+			let descLabel  = document.getElementById("descLabel");
+			descLabel.innerHTML = `${stackName}:descriptions`;
+			let linkLabel  = document.getElementById("linkLabel");
+			linkLabel.innerHTML = `${stackName}:links`;
+		})
+	}).catch((e) => {
+		let errorMessage = {
+			type:    "MESSAGE",
+			topic:   "AlertMessage",
+			message: "Error in fetching the RSS feed: " + e,
+		};
+
+		lioranboardclient.send(JSON.stringify(errorMessage));
+		console.error("Error in fetching the RSS feed: " + e);
+	});
+}
+[insert_over]
